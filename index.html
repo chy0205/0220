@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2026 好運放馬來 - 專業雲端抽獎系統</title>
+    
+    <!-- PWA & Mobile App Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="好運放馬來">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Inter:wght@400;700;900&display=swap');
+        
+        body { 
+            font-family: 'Inter', 'Noto Serif TC', serif; 
+            background-color: #7f1d1d; 
+            margin: 0; padding: 0; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            height: 100vh; width: 100vw;
+            overscroll-behavior-y: contain;
+        }
+
+        .cny-bg {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cpath d='M10 50 Q25 40 40 50 T70 50 T100 50' fill='none' stroke='%23991b1b' stroke-width='2'/%3E%3Cpath d='M0 80 Q15 70 30 80 T60 80 T90 80' fill='none' stroke='%23991b1b' stroke-width='1'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+        }
+
+        .app-container {
+            width: 100vw; height: 100vh;
+            position: relative;
+            background-color: rgba(153, 27, 27, 0.93);
+            display: flex; flex-direction: column;
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        @media (min-width: 1024px) {
+            .app-container {
+                width: 100vw; height: 56.25vw; 
+                max-height: 95vh; max-width: 177.78vh; 
+                border: 8px solid #d97706;
+                border-radius: 2rem;
+                box-shadow: 0 0 100px rgba(0,0,0,0.8);
+            }
+        }
+
+        .animate-rolling { 
+            animation: rolling 0.1s infinite; 
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+        @keyframes rolling { 
+            0% { transform: translateY(-1px); filter: blur(1px); } 
+            50% { transform: translateY(1px); filter: blur(2px); } 
+            100% { transform: translateY(-1px); filter: blur(1px); } 
+        }
+
+        .lantern-swing {
+            animation: swing 3.5s ease-in-out infinite;
+            transform-origin: top center;
+        }
+        @keyframes swing {
+            0%, 100% { transform: rotate(-4deg); }
+            50% { transform: rotate(4deg); }
+        }
+
+        ::-webkit-scrollbar { display: none; }
+        .custom-scrollbar::-webkit-scrollbar { display: none; }
+        
+        .bounce-in {
+            animation: bounceIn 0.8s cubic-bezier(0.36, 0, 0.66, -0.56) forwards;
+        }
+        @keyframes bounceIn {
+            0% { opacity: 0; transform: scale(0.3); }
+            50% { opacity: 1; transform: scale(1.05); }
+            70% { transform: scale(0.95); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .shake-horizontal {
+            animation: shakeHorizontal 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shakeHorizontal {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        .gold-glow {
+            box-shadow: 0 0 40px rgba(251, 191, 36, 0.5), inset 0 0 30px rgba(255, 255, 255, 0.4);
+        }
+
+        .safe-pt { padding-top: env(safe-area-inset-top); }
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body class="cny-bg">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ============================================================
+        // 🔒 系統配置區
+        // ============================================================
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwP9BgU-84FT9rS-ASNDHAiOd20LU7XsPt4jX9-E7J0yqAfvjp5VfX-fZ4K6cnUa669pw/exec"; 
+        
+        // 🔒 大獎抽獎密碼 (特、頭、貳獎)
+        const MASTER_PASSWORD = "2026"; 
+
+        const INITIAL_PRIZES = [
+            { id: 1, name: '🧧 特獎', count: 1, batch: 1, isMajor: true },
+            { id: 2, name: '🧧 頭獎', count: 2, batch: 1, isMajor: true },
+            { id: 3, name: '🧧 貳獎', count: 5, batch: 1, isMajor: true },
+            { id: 4, name: '🧧 第一次 100人', count: 100, batch: 20, isMajor: false },
+            { id: 5, name: '🧧 第二次 100人', count: 100, batch: 20, isMajor: false },
+            { id: 6, name: '🧧 第三次 100人', count: 100, batch: 20, isMajor: false }
+        ];
+        // ============================================================
+
+        const SoundEngine = {
+            ctx: null,
+            isMuted: false,
+            init() {
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            },
+            playRoll() {
+                if (this.isMuted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            },
+            playWin() {
+                if (this.isMuted || !this.ctx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.1);
+                    gain.gain.setValueAtTime(0.1, this.ctx.currentTime + i * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.1 + 0.4);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + i * 0.1);
+                    osc.stop(this.ctx.currentTime + i * 0.1 + 0.5);
+                });
+            },
+            playGong() {
+                if (this.isMuted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 1.5);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 1.5);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 1.5);
+            },
+            playFirecrackers(count = 12) {
+                if (this.isMuted || !this.ctx) return;
+                for(let i=0; i<count; i++) {
+                    const time = this.ctx.currentTime + (i * 0.15) + (Math.random() * 0.1);
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(100 + Math.random() * 200, time);
+                    gain.gain.setValueAtTime(0.2, time);
+                    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(time);
+                    osc.stop(time + 0.1);
+                }
+            },
+            playError() {
+                if (this.isMuted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(50, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+        };
+
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const containerRef = useRef(null);
+            useEffect(() => {
+                if (window.lucide && containerRef.current) {
+                    containerRef.current.innerHTML = '';
+                    const i = document.createElement('i');
+                    i.setAttribute('data-lucide', name);
+                    i.className = className;
+                    i.style.width = `${size}px`;
+                    i.style.height = `${size}px`;
+                    containerRef.current.appendChild(i);
+                    window.lucide.createIcons();
+                }
+            }, [name, size, className]);
+            return <span ref={containerRef} className="inline-flex items-center justify-center leading-none" />;
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('draw'); 
+            const [participants, setParticipants] = useState([]);
+            const [prizes, setPrizes] = useState(INITIAL_PRIZES.map(p => ({ ...p, remaining: p.count })));
+            const [winners, setWinners] = useState([]);
+            const [totalWonCount, setTotalWonCount] = useState(0); 
+            const [isRolling, setIsRolling] = useState(false);
+            const [showResults, setShowResults] = useState(false); 
+            const [currentDisplay, setCurrentDisplay] = useState([]); 
+            const [selectedPrizeId, setSelectedPrizeId] = useState(1);
+            const [syncStatus, setSyncStatus] = useState("loading");
+            const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+            const [isMuted, setIsMuted] = useState(false);
+            
+            const [showPasswordModal, setShowPasswordModal] = useState(false);
+            const [passwordInput, setPasswordInput] = useState("");
+            const [isPasswordError, setIsPasswordError] = useState(false);
+
+            const rollInterval = useRef(null);
+
+            useEffect(() => {
+                const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+                if (!isStandalone) {
+                    const timer = setTimeout(() => setShowInstallPrompt(true), 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, []);
+
+            const fetchCloudData = async () => {
+                if (!GAS_API_URL) return;
+                setSyncStatus("loading");
+                try {
+                    const response = await fetch(`${GAS_API_URL}?t=${new Date().getTime()}`);
+                    const data = await response.json();
+                    if (data.error) { setSyncStatus("error"); return; }
+                    const loadedParticipants = data.participants || [];
+                    const wonIds = data.wonIds || [];
+                    const cloudPrizeCounts = data.prizeCounts || {}; 
+                    setParticipants(loadedParticipants);
+                    setTotalWonCount(wonIds.length);
+                    const cloudWinners = wonIds.map(id => {
+                        const person = loadedParticipants.find(p => String(p.id) === String(id));
+                        return person ? { ...person, prizeName: "已於雲端記錄", time: "-" } 
+                        : { id: id, name: "已移除成員", phone: "N/A", prizeName: "已記錄", time: "-" };
+                    });
+                    setWinners(cloudWinners.reverse());
+                    setPrizes(INITIAL_PRIZES.map(p => ({
+                        ...p,
+                        remaining: Math.max(0, p.count - (cloudPrizeCounts[p.name] || 0))
+                    })));
+                    setSyncStatus("idle");
+                } catch (err) { setSyncStatus("error"); }
+            };
+
+            useEffect(() => { fetchCloudData(); }, []);
+
+            const syncToCloud = async (winnerData) => {
+                if (!GAS_API_URL) return;
+                try {
+                    await fetch(GAS_API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(winnerData) });
+                } catch (err) { console.error("Sync Error", err); }
+            };
+
+            const toggleMute = () => {
+                SoundEngine.init();
+                const newMute = !isMuted;
+                setIsMuted(newMute);
+                SoundEngine.isMuted = newMute;
+            };
+
+            const handleStartClick = () => {
+                SoundEngine.init();
+                const prize = prizes.find(p => p.id === selectedPrizeId);
+                if (prize && prize.isMajor) {
+                    setShowPasswordModal(true);
+                    setPasswordInput("");
+                    setIsPasswordError(false);
+                } else {
+                    executeDraw();
+                }
+            };
+
+            const handlePasswordConfirm = () => {
+                if (passwordInput === MASTER_PASSWORD) {
+                    setShowPasswordModal(false);
+                    executeDraw();
+                } else {
+                    setIsPasswordError(true);
+                    SoundEngine.playError();
+                    setTimeout(() => setIsPasswordError(false), 500);
+                }
+            };
+
+            const executeDraw = () => {
+                const prize = prizes.find(p => p.id === selectedPrizeId);
+                const pool = participants.filter(p => !winners.some(w => String(w.id) === String(p.id)));
+                if (!prize || prize.remaining <= 0) return alert("該獎項名額已滿！");
+                if (pool.length < prize.batch) return alert(`名單剩餘人數不足以抽出 ${prize.batch} 位！`);
+                
+                SoundEngine.playGong(); 
+                setShowResults(true); 
+                setIsRolling(true);
+                rollInterval.current = setInterval(() => {
+                    const tempWinners = [];
+                    for(let i=0; i < prize.batch; i++) {
+                        tempWinners.push(pool[Math.floor(Math.random() * pool.length)].id);
+                    }
+                    setCurrentDisplay(tempWinners);
+                    SoundEngine.playRoll();
+                }, 100);
+                setTimeout(stopDraw, 3000);
+            };
+
+            const stopDraw = async () => {
+                clearInterval(rollInterval.current);
+                setIsRolling(false);
+                setSyncStatus("syncing");
+                SoundEngine.playWin(); 
+                SoundEngine.playFirecrackers(); 
+                const prize = prizes.find(p => p.id === selectedPrizeId);
+                const pool = participants.filter(p => !winners.some(w => String(w.id) === String(p.id)));
+                const shuffled = [...pool].sort(() => 0.5 - Math.random());
+                const drawnWinners = shuffled.slice(0, prize.batch);
+                setCurrentDisplay(drawnWinners.map(w => w.id));
+                const now = new Date().toLocaleString();
+                const newRecords = drawnWinners.map(w => ({
+                    id: w.id, name: w.name, phone: w.phone, prizeName: prize.name, time: now
+                }));
+                setWinners(prev => [...newRecords, ...prev]);
+                setTotalWonCount(prev => prev + prize.batch);
+                setPrizes(prev => prev.map(p => 
+                    p.id === selectedPrizeId ? { ...p, remaining: p.remaining - prize.batch } : p
+                ));
+                for(const record of newRecords) { await syncToCloud(record); }
+                setSyncStatus("success");
+                setTimeout(() => setSyncStatus("idle"), 2000);
+                confetti({
+                    particleCount: 250, spread: 100, origin: { y: 0.4 },
+                    colors: ['#fbbf24', '#ef4444', '#ffffff', '#ffd700']
+                });
+            };
+
+            const resetToSelection = () => {
+                setShowResults(false);
+                setCurrentDisplay([]);
+            };
+
+            return (
+                <div className="app-container safe-pt safe-pb">
+                    {/* 背景燈籠 */}
+                    <div className="absolute top-0 left-4 lg:left-10 lantern-swing pointer-events-none z-50">
+                        <div className="w-0.5 h-16 lg:h-24 bg-amber-500 mx-auto"></div>
+                        <div className="w-10 h-12 lg:w-14 lg:h-16 bg-red-600 rounded-full border-2 border-amber-400 shadow-xl flex items-center justify-center font-black text-amber-200 text-sm lg:text-xl text-center leading-tight">春<br/>福</div>
+                    </div>
+                    <div className="absolute top-0 right-4 lg:right-10 lantern-swing pointer-events-none z-50">
+                        <div className="w-0.5 h-32 lg:h-48 bg-amber-500 mx-auto"></div>
+                        <div className="w-10 h-12 lg:w-14 lg:h-16 bg-red-600 rounded-full border-2 border-amber-400 shadow-xl flex items-center justify-center font-black text-amber-200 text-sm lg:text-xl text-center leading-tight">吉<br/>祥</div>
+                    </div>
+
+                    {/* Logo - 定位於畫面右上角 (z-60) */}
+                    <div className="absolute top-[-80px] right-0 -mt-2 -mr-2 w-60 h-60 lg:w-72 lg:h-72 z-[60] active:scale-95 transition-transform flex items-center justify-center pointer-events-none">
+                        <img 
+                            src="logo-2.png" 
+                            alt="Logo" 
+                            className="w-full h-full object-contain drop-shadow-2xl opacity-95" 
+                            onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.parentElement.innerHTML = '<span class="text-amber-400 font-black text-5xl lg:text-7xl drop-shadow-md">馬</span>';
+                            }} 
+                        />
+                    </div>
+
+                    <header className="relative flex items-center justify-center px-6 lg:px-10 pt-4 pb-1 shrink-0 z-20">
+                        {/* 左側標題 */}
+                        <div className="absolute left-6 lg:left-10 flex items-center gap-4">
+                            <div className="bg-amber-500 p-2 rounded-full shadow-[0_0_15px_#fbbf24] hidden md:block">
+                                <Icon name="sparkles" size={24} className="text-red-800" />
+                            </div>
+                            <div className="flex flex-col">
+                                <h1 className="text-xl lg:text-3xl font-black tracking-tighter text-amber-400 drop-shadow-lg leading-tight">2026 好運放馬來</h1>
+                                <p className="text-amber-200/60 text-[8px] lg:text-[10px] font-bold tracking-widest uppercase leading-none">Double Verified Cloud Lottery</p>
+                            </div>
+                        </div>
+                        
+                        {/* 導覽標籤組 */}
+                        {!showResults && (
+                            <div className="flex bg-red-900/50 p-1 rounded-xl border border-amber-600/30 items-center mx-auto shadow-xl relative z-30">
+                                {[{ id: 'draw', label: '抽獎', icon: 'play' }, { id: 'history', label: '記錄', icon: 'award' }, { id: 'setup', label: '名單', icon: 'users' }].map(tab => (
+                                    <button 
+                                        key={tab.id} 
+                                        onClick={() => setActiveTab(tab.id)} 
+                                        className={`flex items-center justify-center gap-2 px-4 py-2 lg:px-6 rounded-lg text-xs lg:text-sm font-black transition-all ${activeTab === tab.id ? 'bg-amber-500 text-red-900 shadow-lg scale-105' : 'text-amber-200/50 hover:text-amber-200'}`}
+                                    >
+                                        <Icon name={tab.icon} size={14} /> {tab.label}
+                                    </button>
+                                ))}
+                                <button 
+                                    onClick={toggleMute} 
+                                    className="ml-2 mr-1 text-amber-400/50 hover:text-amber-400 transition-colors p-2 bg-red-800/40 rounded-lg active:scale-90 border border-amber-600/10 shadow-inner"
+                                    title="切換靜音"
+                                >
+                                    <Icon name={isMuted ? "volume-x" : "volume-2"} size={16} />
+                                </button>
+                            </div>
+                        )}
+                    </header>
+
+                    <main className="flex-1 flex flex-col justify-center items-center relative z-20 px-4 lg:px-6 overflow-hidden">
+                        {syncStatus === "loading" ? (
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="animate-spin text-amber-400"><Icon name="refresh-cw" size={48} /></div>
+                                <p className="text-xl font-black text-amber-200 animate-pulse tracking-widest">同步數據中...</p>
+                            </div>
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center">
+                                {activeTab === 'draw' && (
+                                    <div className="w-full h-full flex flex-col items-center justify-center">
+                                        {!showResults ? (
+                                            <div className="flex flex-col items-center justify-center h-full gap-6 lg:gap-8 animate-in fade-in scale-in w-full overflow-y-auto custom-scrollbar py-4">
+                                                <div className="flex gap-2 lg:gap-3 flex-wrap justify-center max-w-5xl">
+                                                    {prizes.map(p => (
+                                                        <button 
+                                                            key={p.id} onClick={() => setSelectedPrizeId(p.id)} disabled={p.remaining <= 0}
+                                                            className={`relative px-4 py-3 lg:px-6 lg:py-4 rounded-b-xl border-t-4 transition-all flex flex-col items-center min-w-[100px] lg:min-w-[140px] ${
+                                                                selectedPrizeId === p.id ? 'bg-amber-500 border-white text-red-900 shadow-2xl z-10 scale-110' 
+                                                                : p.remaining <= 0 ? 'bg-red-950 border-gray-600 text-gray-500 opacity-40 grayscale'
+                                                                : 'bg-red-900/60 border-amber-600/50 text-amber-500'
+                                                            }`}
+                                                        >
+                                                            {p.isMajor && <div className="absolute -top-2 right-0 bg-red-600 text-white text-[8px] px-1 rounded-sm shadow-sm flex items-center gap-0.5"><Icon name="lock" size={8} /> 需驗證</div>}
+                                                            <span className="text-xs lg:text-sm font-black tracking-wider">{p.name}</span>
+                                                            <span className="text-[10px] font-bold opacity-80 mt-1">{p.remaining <= 0 ? '已抽完' : `剩 ${p.remaining}`}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                <button 
+                                                    onClick={handleStartClick} disabled={prizes.find(px => px.id === selectedPrizeId)?.remaining <= 0}
+                                                    className="group relative w-48 h-48 lg:w-56 lg:h-56 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex flex-col items-center justify-center shadow-[0_0_50px_rgba(251,191,36,0.4)] border-8 border-white/20 active:scale-95 transition-all"
+                                                >
+                                                    <div className="absolute inset-0 rounded-full animate-ping bg-amber-400/20 group-hover:hidden"></div>
+                                                    <Icon name="gift" size={40} className="text-red-800 mb-2" />
+                                                    <span className="text-xl lg:text-2xl font-black text-red-900 tracking-widest">開始抽獎</span>
+                                                    <span className="text-[10px] font-bold text-red-800/60 uppercase">抽取 {prizes.find(p=>p.id===selectedPrizeId)?.batch} 人</span>
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center py-2 animate-in zoom-in duration-300">
+                                                <div className="w-full h-[98%] bg-red-900/50 backdrop-blur-2xl rounded-[30px] lg:rounded-[40px] p-4 border-2 border-amber-500/30 flex flex-col shadow-2xl relative overflow-hidden">
+                                                    <div className="flex items-center justify-center relative mb-2 h-14 shrink-0 px-2 lg:px-4">
+                                                        <h3 className="text-amber-400 font-black tracking-[0.2em] lg:tracking-[0.4em] text-lg lg:text-2xl uppercase drop-shadow-md text-center">
+                                                            {isRolling ? "✦ 抽獎中 ✦" : "✦ 恭喜獲獎 ✦"}
+                                                        </h3>
+                                                        {!isRolling && (
+                                                            <button 
+                                                                onClick={resetToSelection}
+                                                                className="absolute right-0 lg:right-4 bg-white/95 text-red-900 px-3 py-1.5 rounded-full font-black text-[10px] lg:text-xs shadow-xl flex items-center gap-1 border-2 border-amber-500 z-[70] active:scale-95"
+                                                            >
+                                                                <Icon name="rotate-ccw" size={12} /> 下一輪
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex justify-center mb-2 shrink-0">
+                                                        <div className="bg-amber-500 text-red-900 px-8 lg:px-12 py-1 rounded-full text-xs lg:text-sm font-black shadow-lg border border-white/30 tracking-widest">
+                                                            {prizes.find(p=>p.id===selectedPrizeId)?.name}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex-1 flex items-center justify-center overflow-hidden w-full max-w-[98%] mx-auto">
+                                                        {currentDisplay.length === 1 ? (
+                                                            <div className={`
+                                                                w-full max-w-xl bg-gradient-to-br from-amber-300 via-amber-500 to-amber-600 
+                                                                text-red-900 font-black rounded-[30px] lg:rounded-[40px] gold-glow border-4 border-white/80
+                                                                flex items-center justify-center transition-all duration-300
+                                                                ${isRolling ? 'animate-rolling blur-[1px]' : 'bounce-in'}
+                                                                h-[60%] flex-col drop-shadow-2xl
+                                                            `}>
+                                                                {/* 停止滾動後，如果是大獎則顯示 ID + 姓名 */}
+                                                                {!isRolling && prizes.find(p => p.id === selectedPrizeId)?.isMajor ? (
+                                                                    <React.Fragment>
+                                                                        <div className="text-4xl lg:text-5xl opacity-40 mb-4 font-bold tracking-widest">#{currentDisplay[0]}</div>
+                                                                        <div className="text-7xl lg:text-[10rem] leading-none">
+                                                                            {participants.find(p => String(p.id) === String(currentDisplay[0]))?.name || "未知"}
+                                                                        </div>
+                                                                    </React.Fragment>
+                                                                ) : (
+                                                                    <div className="text-6xl lg:text-9xl">{currentDisplay[0]}</div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="grid gap-2 w-full h-full p-1 grid-cols-4 lg:grid-cols-5 items-center justify-center auto-rows-fr">
+                                                                {currentDisplay.map((id, idx) => {
+                                                                    const person = participants.find(p => String(p.id) === String(id));
+                                                                    const isMajor = prizes.find(p => p.id === selectedPrizeId)?.isMajor;
+                                                                    return (
+                                                                        <div key={idx} className={`
+                                                                            bg-gradient-to-b from-amber-300 to-amber-500 text-red-900 font-black rounded-xl 
+                                                                            flex items-center justify-center shadow-lg border border-white/60 
+                                                                            transform transition-all duration-300 flex-col
+                                                                            ${isRolling ? 'animate-rolling blur-[0.5px] opacity-70' : 'bounce-in'}
+                                                                            h-[85%] w-full
+                                                                        `}>
+                                                                            {!isRolling && isMajor ? (
+                                                                                <React.Fragment>
+                                                                                    <div className="text-[8px] lg:text-[10px] opacity-60 mb-0.5 leading-none">#{id}</div>
+                                                                                    <div className="text-sm lg:text-2xl truncate px-1">{person?.name || "未知"}</div>
+                                                                                </React.Fragment>
+                                                                            ) : (
+                                                                                <div className="text-sm lg:text-2xl">{id}</div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'history' && (
+                                    <div className="w-full max-w-4xl bg-red-900/30 backdrop-blur-sm rounded-[30px] p-4 lg:p-6 border border-amber-600/30 flex flex-col h-[80%] shadow-2xl relative z-10">
+                                        <h2 className="text-lg lg:text-xl font-black text-amber-400 flex items-center gap-2 mb-4 pb-2 border-b border-amber-600/20"><Icon name="medal" size={20} /> 2026 鴻運榜</h2>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-3 overflow-y-auto pr-2 custom-scrollbar">
+                                            {winners.map((w, i) => (
+                                                <div key={i} className="bg-red-800/50 p-3 lg:p-4 rounded-xl border border-amber-600/10 flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 text-red-900 flex items-center justify-center font-black text-[10px] lg:text-xs shadow">{String(w.id).slice(-4)}</div>
+                                                        <div className="font-black text-xs text-white truncate w-16 lg:w-20">{w.name}</div>
+                                                    </div>
+                                                    <div className="bg-red-600 text-amber-100 px-2 py-1 rounded text-[8px] font-black">{w.prizeName}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'setup' && (
+                                    <div className="w-full max-w-4xl bg-red-900/30 rounded-[30px] p-4 lg:p-6 border border-amber-600/30 flex flex-col h-[80%] relative z-10">
+                                        <h2 className="text-lg lg:text-xl font-black text-amber-400 mb-4 flex items-center gap-2"><Icon name="users" /> 參賽名單</h2>
+                                        <div className="grid grid-cols-4 md:grid-cols-8 lg:grid-cols-10 gap-2 overflow-y-auto pr-2 custom-scrollbar">
+                                            {participants.map((p, i) => {
+                                                const isWon = winners.some(w => String(w.id) === String(p.id));
+                                                return (
+                                                    <div key={i} className={`p-2 rounded-lg border text-center transition-all ${isWon ? 'bg-red-950/50 border-red-900 text-red-800 line-through opacity-40' : 'bg-red-800/40 border-amber-600/10 text-white font-bold text-[10px]'}`}>
+                                                        <div className="truncate">{p.name}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+
+                    <footer className="shrink-0 flex justify-between items-center px-6 lg:px-10 border-t border-amber-600/10 py-3 lg:py-4 relative z-20 bg-red-900/40">
+                        <div className="flex items-center gap-4 lg:gap-8">
+                            <div className="flex flex-col">
+                                <span className="text-[7px] lg:text-[8px] text-amber-200/40 font-black uppercase tracking-widest leading-none mb-1">總人數</span>
+                                <span className="text-sm lg:text-xl font-black text-white leading-none">{participants.length}</span>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[7px] lg:text-[8px] text-amber-500/80 font-black uppercase tracking-widest leading-none mb-1">已抽人數</span>
+                                <span className="text-sm lg:text-xl font-black text-amber-400 leading-none">{totalWonCount}</span>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[7px] lg:text-[8px] text-emerald-500/80 font-black uppercase tracking-widest leading-none mb-1">剩下人數</span>
+                                <span className="text-sm lg:text-xl font-black text-emerald-400 leading-none">{participants.length - totalWonCount}</span>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 lg:gap-4">
+                            <div className="flex bg-red-900/80 px-4 py-1.5 rounded-full border border-amber-600/30 items-center gap-2 mr-2 shadow-lg">
+                                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${syncStatus === 'error' ? 'bg-red-500' : 'bg-green-500'}`} />
+                                <span className="text-[8px] font-black text-amber-200/40 uppercase tracking-wider">Cloud Sync</span>
+                            </div>
+                            <button onClick={fetchCloudData} className="flex items-center gap-1 bg-amber-600/20 px-3 py-1.5 lg:px-4 rounded-lg border border-amber-600/30 active:bg-amber-600/40 transition-all">
+                                <Icon name="rotate-cw" size={12} className="text-amber-400" />
+                                <span className="hidden lg:inline text-[10px] font-black text-amber-200 uppercase tracking-tighter">刷新雲端</span>
+                            </button>
+                        </div>
+                    </footer>
+
+                    {/* 大獎密碼驗證視窗 (z-200) */}
+                    {showPasswordModal && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+                            <div className={`bg-white rounded-[30px] w-full max-w-sm p-8 text-center shadow-2xl ${isPasswordError ? 'shake-horizontal' : 'animate-in zoom-in'}`}>
+                                <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 shadow-inner">
+                                    <Icon name="shield-check" size={32} />
+                                </div>
+                                <h4 className="text-xl font-black mb-2 text-red-900">大獎權限驗證</h4>
+                                <p className="text-gray-500 text-xs mb-6 font-bold uppercase tracking-widest">抽獎項目：{prizes.find(p => p.id === selectedPrizeId)?.name}</p>
+                                <input 
+                                    type="password" 
+                                    value={passwordInput}
+                                    onChange={(e) => setPasswordInput(e.target.value)}
+                                    placeholder="請輸入授權密碼"
+                                    autoFocus
+                                    className={`w-full bg-gray-100 border-2 rounded-2xl py-4 text-center text-2xl font-black outline-none transition-all ${isPasswordError ? 'border-red-500 text-red-500 bg-red-50' : 'border-transparent focus:border-amber-500'}`}
+                                />
+                                {isPasswordError && <p className="text-red-500 text-[10px] mt-2 font-bold animate-pulse tracking-wide">密碼不正確，請重新輸入</p>}
+                                <div className="grid grid-cols-2 gap-3 mt-8">
+                                    <button onClick={() => setShowPasswordModal(false)} className="bg-gray-100 text-gray-400 py-3 rounded-xl font-black text-sm active:scale-95">取消操作</button>
+                                    <button onClick={handlePasswordConfirm} className="bg-red-700 text-white py-3 rounded-xl font-black text-sm shadow-lg shadow-red-200 active:scale-95">確認授權</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showInstallPrompt && (
+                        <div className="fixed inset-0 z-[100] flex items-end lg:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                            <div className="bg-white rounded-t-[30px] lg:rounded-[30px] w-full max-w-md p-6 text-gray-900 shadow-2xl animate-in slide-in-from-bottom duration-500">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="bg-amber-100 p-3 rounded-2xl"><Icon name="mobile" size={32} className="text-amber-600" /></div>
+                                    <button onClick={() => setShowInstallPrompt(false)} className="text-gray-400"><Icon name="x" size={24} /></button>
+                                </div>
+                                <h4 className="text-xl font-black mb-2 text-red-900 tracking-tight">將抽獎加入主畫面</h4>
+                                <p className="text-gray-500 text-sm mb-6 leading-relaxed">享受全螢幕體驗並獲得更快的啟動速度。</p>
+                                <div className="space-y-4 mb-8">
+                                    <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold">1</div>
+                                        <p className="text-xs font-bold text-gray-700">點擊瀏覽器下方的 <Icon name="share" size={14} className="mx-1 inline"/> 「分享」按鈕</p>
+                                    </div>
+                                    <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold">2</div>
+                                        <p className="text-xs font-bold text-gray-700">選擇 <Icon name="plus-square" size={14} className="mx-1 inline"/> 「加入主畫面」</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowInstallPrompt(false)} className="w-full bg-red-700 text-white py-4 rounded-2xl font-black shadow-lg shadow-red-200 transition-transform">我知道了</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
